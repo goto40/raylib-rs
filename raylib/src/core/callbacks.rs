@@ -233,6 +233,7 @@ fn clear_closure(callback_index: usize) {
         );
     }
     *guard = None;
+    println!("closure cleared.");
 }
 
 #[no_mangle]
