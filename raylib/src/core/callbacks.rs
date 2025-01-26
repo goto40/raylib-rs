@@ -2,15 +2,20 @@
 
 use crate::{audio::AudioStream, ffi, RaylibHandle};
 pub use raylib_sys::TraceLogLevel;
+use std::ffi::c_void;
+use std::os::raw::c_int;
+use std::sync::Mutex;
 use std::{
     borrow::Cow,
     convert::TryInto,
-    ffi::{c_char, c_int, c_void, CStr, CString},
+    ffi::{c_char, CStr, CString},
     mem::{size_of, transmute},
     ptr::null_mut,
     slice::from_raw_parts_mut,
     sync::atomic::{AtomicUsize, Ordering},
 };
+
+use super::audio::Music;
 
 type TraceLogCallback = unsafe extern "C" fn(*mut i8, *const i8, ...);
 extern "C" {
@@ -199,6 +204,42 @@ pub fn set_load_file_text_callback<'a>(cb: fn(&str) -> String) -> Result<(), Set
         custom_load_file_text_callback,
         "load file text"
     )
+}
+
+// Define the type of the closure
+type MyClosure = Box<dyn Fn(*mut c_void, u32) -> () + Send + Sync + 'static>;
+
+// Create a global mutex to store the closure
+lazy_static::lazy_static! {
+    static ref CLOSURE: Mutex<Option<MyClosure>> = Mutex::new(None);
+}
+
+// Function to set the closure
+fn set_closure(closure: MyClosure) {
+    let mut guard = CLOSURE.lock().unwrap();
+    *guard = Some(closure);
+}
+
+#[no_mangle]
+pub extern "C" fn callback(data_ptr: *mut c_void, frames: u32) -> () {
+    let guard = CLOSURE.lock().unwrap();
+    if let Some(ref closure) = *guard {
+        closure(data_ptr, frames)
+    } else {
+        panic!("unexpected: no callback set")
+    }
+}
+
+pub fn attach_audio_stream_processor_to_music<'a>(music: Music<'a>, processor: fn(&[f32])) -> () {
+    let my_closure = Box::new(move |data_ptr: *mut c_void, frames: u32| -> () {
+        let f32_ptr = data_ptr as *mut f32;
+        let data = unsafe { std::slice::from_raw_parts(f32_ptr, frames as usize) };
+        processor(data);
+    });
+    set_closure(my_closure);
+    unsafe {
+        crate::ffi::AttachAudioStreamProcessor(music.stream, Some(callback));
+    }
 }
 
 /// Audio thread callback to request new data
