@@ -230,7 +230,10 @@ pub extern "C" fn callback(data_ptr: *mut c_void, frames: u32) -> () {
     }
 }
 
-pub fn attach_audio_stream_processor_to_music<'a>(music: Music<'a>, processor: fn(&[f32])) -> () {
+pub fn attach_audio_stream_processor_to_music<'a>(
+    music: &'a Music<'a>,
+    processor: fn(&[f32]),
+) -> () {
     let my_closure = Box::new(move |data_ptr: *mut c_void, frames: u32| -> () {
         let f32_ptr = data_ptr as *mut f32;
         let data = unsafe { std::slice::from_raw_parts(f32_ptr, frames as usize) };
