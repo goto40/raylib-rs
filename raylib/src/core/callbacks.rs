@@ -215,12 +215,13 @@ lazy_static::lazy_static! {
 }
 
 // Function to set the closure
-fn set_closure(_callback_index: usize, closure: MyClosure) {
+fn set_closure(closure: MyClosure) -> usize {
     let mut guard = CLOSURE.lock().unwrap();
     if (*guard).is_some() {
         panic!("You cannot add more callbacks for the moment.");
     }
     *guard = Some(closure);
+    0
 }
 
 // Function to set the closure
@@ -266,15 +267,19 @@ impl<'a> Drop for AudioStreamProcessor<'a> {
 pub fn attach_audio_stream_processor_to_music<'a>(
     music: &'a Music<'a>,
     processor: fn(&[f32]),
-) -> () {
+) -> AudioStreamProcessor<'a> {
     let my_closure = Box::new(move |data_ptr: *mut c_void, frames: u32| -> () {
         let f32_ptr = data_ptr as *mut f32;
         let data = unsafe { std::slice::from_raw_parts(f32_ptr, frames as usize) };
         processor(data);
     });
-    set_closure(0, my_closure);
+    let idx = set_closure(my_closure);
     unsafe {
         crate::ffi::AttachAudioStreamProcessor(music.stream, Some(callback));
+    }
+    AudioStreamProcessor::<'a> {
+        music: music,
+        callback_index: idx,
     }
 }
 
