@@ -215,9 +215,24 @@ lazy_static::lazy_static! {
 }
 
 // Function to set the closure
-fn set_closure(closure: MyClosure) {
+fn set_closure(_callback_index: usize, closure: MyClosure) {
     let mut guard = CLOSURE.lock().unwrap();
+    if (*guard).is_some() {
+        panic!("You cannot add more callbacks for the moment.");
+    }
     *guard = Some(closure);
+}
+
+// Function to set the closure
+fn clear_closure(callback_index: usize) {
+    let mut guard = CLOSURE.lock().unwrap();
+    if (*guard).is_none() {
+        panic!(
+            "No callbacks registered under this number ({}).",
+            callback_index
+        );
+    }
+    *guard = None;
 }
 
 #[no_mangle]
@@ -230,6 +245,23 @@ pub extern "C" fn callback(data_ptr: *mut c_void, frames: u32) -> () {
     }
 }
 
+pub struct AudioStreamProcessor<'a> {
+    music: &'a Music<'a>,
+    callback_index: usize, // always 0 at the moment
+}
+
+impl<'a> Drop for AudioStreamProcessor<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            if self.callback_index != 0 {
+                panic!("unexpected");
+            }
+            crate::ffi::DetachAudioStreamProcessor(self.music.stream, Some(callback));
+            clear_closure(self.callback_index);
+        }
+    }
+}
+
 pub fn attach_audio_stream_processor_to_music<'a>(
     music: &'a Music<'a>,
     processor: fn(&[f32]),
@@ -239,7 +271,7 @@ pub fn attach_audio_stream_processor_to_music<'a>(
         let data = unsafe { std::slice::from_raw_parts(f32_ptr, frames as usize) };
         processor(data);
     });
-    set_closure(my_closure);
+    set_closure(0, my_closure);
     unsafe {
         crate::ffi::AttachAudioStreamProcessor(music.stream, Some(callback));
     }
