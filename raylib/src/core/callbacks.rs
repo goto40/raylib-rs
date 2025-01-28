@@ -265,7 +265,7 @@ impl<'a> Drop for AudioStreamProcessor<'a> {
 
 pub fn attach_audio_stream_processor_to_music<'a>(
     music: &'a Music<'a>,
-    processor: fn(nb_channels: usize, &[f32]),
+    processor: Fn(usize, &[f32])->(),
 ) -> AudioStreamProcessor<'a> {
     let nb_channels_from_music = music.stream.channels as usize;
     let my_closure = Box::new(move |data_ptr: *mut c_void, frames: u32| -> () {
