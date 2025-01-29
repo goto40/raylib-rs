@@ -1,6 +1,6 @@
 [submodule "raylib-sys/raylib"]
 	path = raylib-sys/raylib
-	url = https://github.com/goto40/raylib.git
+	url = https://github.com/goto40/raylib
 	branch = feature/add_user_data_callbacks
 [submodule "raylib-sys/binding/rlImGui"]
 	path = raylib-sys/binding/rlImGui
