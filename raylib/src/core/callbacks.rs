@@ -209,7 +209,7 @@ where
     F: FnMut(&mut [f32], u32) -> (),
 {
     rust_callback: &'a mut F,
-    nb_channels_from_music: u32,
+    nb_channels: u32,
 }
 
 impl<'a, F> AudioStreamProcessorCallback<'a, F>
@@ -219,7 +219,7 @@ where
     fn new(closure: &'a mut F, nb_channels_from_music: u32) -> Self {
         Self {
             rust_callback: closure,
-            nb_channels_from_music: nb_channels_from_music,
+            nb_channels: nb_channels_from_music,
         }
     }
 
@@ -237,13 +237,10 @@ where
         let data = unsafe {
             std::slice::from_raw_parts_mut(
                 f32_ptr,
-                frame_count as usize * stream_processor_callback.nb_channels_from_music as usize,
+                frame_count as usize * stream_processor_callback.nb_channels as usize,
             )
         };
-        (stream_processor_callback.rust_callback)(
-            data,
-            stream_processor_callback.nb_channels_from_music,
-        );
+        (stream_processor_callback.rust_callback)(data, stream_processor_callback.nb_channels);
     }
 }
 
@@ -254,10 +251,8 @@ pub fn attach_audio_stream_processor_to_music<'a, F>(
 where
     F: FnMut(&mut [f32], u32) -> (),
 {
-    let mut stream_processor_callback = Box::new(AudioStreamProcessorCallback::<'a, F>::new(
-        processor,
-        music.stream.channels,
-    ));
+    let mut stream_processor_callback =
+        Box::new(AudioStreamProcessorCallback::<'a, F>::new(processor, 2));
     unsafe {
         crate::ffi::AttachAudioStreamProcessorWithUserData(
             stream_processor_callback.get_as_user_data(),
