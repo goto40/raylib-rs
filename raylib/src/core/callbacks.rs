@@ -212,8 +212,8 @@ where
         *mut ::std::os::raw::c_void,
         ::std::os::raw::c_uint,
     ) -> (),
-    rust_callback: &'a mut F,
-    nb_channels_from_music: u32,
+    pub rust_callback: &'a mut F,
+    pub nb_channels_from_music: u32,
 }
 
 impl<'a, F> AudioStreamProcessorCallback<'a, F>
@@ -224,12 +224,16 @@ where
         Self {
             c_callback: Self::c_callback,
             rust_callback: closure,
-            nb_channels_from_music,
+            nb_channels_from_music: nb_channels_from_music,
         }
     }
 
     pub fn get_as_user_data(&mut self) -> *mut ::std::os::raw::c_void {
         return self as *mut Self as *mut ::std::os::raw::c_void;
+    }
+
+    pub fn cast_to_rust(&self, user_data: *mut ::std::os::raw::c_void) -> &mut Self {
+        unsafe { user_data.cast::<Self>().as_mut().unwrap() }
     }
 
     unsafe extern "C" fn c_callback(
@@ -245,24 +249,24 @@ where
                 frame_count as usize * stream_processor_callback.nb_channels_from_music as usize,
             )
         };
-        println!("Calling proc...");
         (stream_processor_callback.rust_callback)(
             data,
             stream_processor_callback.nb_channels_from_music,
         );
-        println!("Calling proc done.");
     }
 }
 
 pub fn attach_audio_stream_processor_to_music<'a, F>(
     music: &'a Music<'a>,
     processor: &'a mut F,
-) -> AudioStreamProcessorCallback<'a, F>
+) -> Box<AudioStreamProcessorCallback<'a, F>>
 where
     F: FnMut(&[f32], u32) -> (),
 {
-    let mut stream_processor_callback =
-        AudioStreamProcessorCallback::<'a, F>::new(processor, music.stream.channels);
+    let mut stream_processor_callback = Box::new(AudioStreamProcessorCallback::<'a, F>::new(
+        processor,
+        music.stream.channels,
+    ));
     unsafe {
         crate::ffi::AttachAudioStreamProcessorWithUserData(
             stream_processor_callback.get_as_user_data(),
