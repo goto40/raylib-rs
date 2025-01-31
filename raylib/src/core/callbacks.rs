@@ -208,33 +208,23 @@ pub struct AudioStreamProcessorCallback<'a, F>
 where
     F: FnMut(&[f32], u32) -> (),
 {
-    pub c_callback: unsafe extern "C" fn(
-        *mut ::std::os::raw::c_void,
-        *mut ::std::os::raw::c_void,
-        ::std::os::raw::c_uint,
-    ) -> (),
-    pub rust_callback: &'a mut F,
-    pub nb_channels_from_music: u32,
+    rust_callback: &'a mut F,
+    nb_channels_from_music: u32,
 }
 
 impl<'a, F> AudioStreamProcessorCallback<'a, F>
 where
     F: FnMut(&[f32], u32) -> (),
 {
-    pub fn new(closure: &'a mut F, nb_channels_from_music: u32) -> Self {
+    fn new(closure: &'a mut F, nb_channels_from_music: u32) -> Self {
         Self {
-            c_callback: Self::c_callback,
             rust_callback: closure,
             nb_channels_from_music: nb_channels_from_music,
         }
     }
 
-    pub fn get_as_user_data(&mut self) -> *mut ::std::os::raw::c_void {
+    fn get_as_user_data(&mut self) -> *mut ::std::os::raw::c_void {
         return self as *mut Self as *mut ::std::os::raw::c_void;
-    }
-
-    pub fn cast_to_rust(&self, user_data: *mut ::std::os::raw::c_void) -> &mut Self {
-        unsafe { user_data.cast::<Self>().as_mut().unwrap() }
     }
 
     unsafe extern "C" fn c_callback(
@@ -272,7 +262,7 @@ where
         crate::ffi::AttachAudioStreamProcessorWithUserData(
             stream_processor_callback.get_as_user_data(),
             music.stream,
-            Some(stream_processor_callback.c_callback),
+            Some(AudioStreamProcessorCallback::<'a, F>::c_callback),
         );
     }
     Box::into_pin(stream_processor_callback)
