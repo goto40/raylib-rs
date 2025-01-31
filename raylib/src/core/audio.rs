@@ -17,13 +17,6 @@ make_thin_wrapper_lifetime!(
     ffi::UnloadAudioStream
 );
 
-pub fn create_audio_stream_from_music<'a>(
-    m: &mut Music<'a>,
-    ra: &'a RaylibAudio,
-) -> AudioStream<'a> {
-    AudioStream::<'a>(m.stream, ra)
-}
-
 pub struct WaveSamples(*mut f32, usize);
 
 impl AsRef<[f32]> for WaveSamples {
