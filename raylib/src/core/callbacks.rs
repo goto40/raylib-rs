@@ -7,6 +7,7 @@ use std::{
     convert::TryInto,
     ffi::{c_char, c_int, c_void, CStr, CString},
     mem::{size_of, transmute},
+    pin::Pin,
     ptr::null_mut,
     slice::from_raw_parts_mut,
     sync::atomic::{AtomicUsize, Ordering},
@@ -259,7 +260,7 @@ where
 pub fn attach_audio_stream_processor_to_music<'a, F>(
     music: &'a Music<'a>,
     processor: &'a mut F,
-) -> Box<AudioStreamProcessorCallback<'a, F>>
+) -> Pin<Box<AudioStreamProcessorCallback<'a, F>>>
 where
     F: FnMut(&[f32], u32) -> (),
 {
@@ -274,7 +275,7 @@ where
             Some(stream_processor_callback.c_callback),
         );
     }
-    stream_processor_callback
+    Box::into_pin(stream_processor_callback)
 }
 
 /// Audio thread callback to request new data
