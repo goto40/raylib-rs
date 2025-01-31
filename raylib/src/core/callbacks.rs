@@ -249,7 +249,7 @@ pub fn attach_audio_stream_processor_to_music<'a, F>(
     processor: &'a mut F,
 ) -> Pin<Box<AudioStreamProcessorCallback<'a, F>>>
 where
-    F: FnMut(&mut [f32], u32) -> (),
+    F: FnMut(&mut [f32], u32) -> () + 'static, // static because the function is executed in another thread
 {
     let mut stream_processor_callback =
         Box::new(AudioStreamProcessorCallback::<'a, F>::new(processor, 2));
