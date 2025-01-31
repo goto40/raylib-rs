@@ -206,7 +206,7 @@ pub fn set_load_file_text_callback<'a>(cb: fn(&str) -> String) -> Result<(), Set
 
 pub struct AudioStreamProcessorCallback<'a, F>
 where
-    F: FnMut(&[f32], u32) -> (),
+    F: FnMut(&mut [f32], u32) -> (),
 {
     rust_callback: &'a mut F,
     nb_channels_from_music: u32,
@@ -214,7 +214,7 @@ where
 
 impl<'a, F> AudioStreamProcessorCallback<'a, F>
 where
-    F: FnMut(&[f32], u32) -> (),
+    F: FnMut(&mut [f32], u32) -> (),
 {
     fn new(closure: &'a mut F, nb_channels_from_music: u32) -> Self {
         Self {
@@ -235,7 +235,7 @@ where
         let stream_processor_callback: &mut Self = user_data.cast::<Self>().as_mut().unwrap();
         let f32_ptr = data_ptr as *mut f32;
         let data = unsafe {
-            std::slice::from_raw_parts(
+            std::slice::from_raw_parts_mut(
                 f32_ptr,
                 frame_count as usize * stream_processor_callback.nb_channels_from_music as usize,
             )
@@ -252,7 +252,7 @@ pub fn attach_audio_stream_processor_to_music<'a, F>(
     processor: &'a mut F,
 ) -> Pin<Box<AudioStreamProcessorCallback<'a, F>>>
 where
-    F: FnMut(&[f32], u32) -> (),
+    F: FnMut(&mut [f32], u32) -> (),
 {
     let mut stream_processor_callback = Box::new(AudioStreamProcessorCallback::<'a, F>::new(
         processor,
