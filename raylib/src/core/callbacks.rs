@@ -245,10 +245,12 @@ where
                 frame_count as usize * stream_processor_callback.nb_channels_from_music as usize,
             )
         };
+        println!("Calling proc...");
         (stream_processor_callback.rust_callback)(
             data,
             stream_processor_callback.nb_channels_from_music,
         );
+        println!("Calling proc done.");
     }
 }
 
