@@ -2,13 +2,10 @@
 
 use crate::{audio::AudioStream, ffi, RaylibHandle};
 pub use raylib_sys::TraceLogLevel;
-use std::ffi::c_void;
-use std::os::raw::c_int;
-use std::sync::Mutex;
 use std::{
     borrow::Cow,
     convert::TryInto,
-    ffi::{c_char, CStr, CString},
+    ffi::{c_char, c_int, c_void, CStr, CString},
     mem::{size_of, transmute},
     ptr::null_mut,
     slice::from_raw_parts_mut,
@@ -206,83 +203,72 @@ pub fn set_load_file_text_callback<'a>(cb: fn(&str) -> String) -> Result<(), Set
     )
 }
 
-// Define the type of the closure
-type MyClosure = Box<dyn Fn(*mut c_void, u32) -> () + Send + Sync + 'static>;
-
-// Create a global mutex to store the closure
-lazy_static::lazy_static! {
-    static ref CLOSURE: Mutex<Option<MyClosure>> = Mutex::new(None);
+pub struct AudioStreamProcessorCallback<'a, F>
+where
+    F: FnMut(&[f32], u32) -> (),
+{
+    pub c_callback: unsafe extern "C" fn(
+        *mut ::std::os::raw::c_void,
+        *mut ::std::os::raw::c_void,
+        ::std::os::raw::c_uint,
+    ) -> (),
+    rust_callback: &'a mut F,
+    nb_channels_from_music: u32,
 }
 
-// Function to set the closure
-fn set_closure(closure: MyClosure) -> usize {
-    let mut guard = CLOSURE.lock().unwrap();
-    if (*guard).is_some() {
-        panic!("You cannot add more callbacks for the moment.");
-    }
-    *guard = Some(closure);
-    0
-}
-
-// Function to set the closure
-fn clear_closure(callback_index: usize) {
-    let mut guard = CLOSURE.lock().unwrap();
-    if (*guard).is_none() {
-        panic!(
-            "No callbacks registered under this number ({}).",
-            callback_index
-        );
-    }
-    *guard = None;
-}
-
-#[no_mangle]
-pub extern "C" fn callback(data_ptr: *mut c_void, frames: u32) -> () {
-    let guard = CLOSURE.lock().unwrap();
-    if let Some(ref closure) = *guard {
-        closure(data_ptr, frames)
-    } else {
-        panic!("unexpected: no callback set")
-    }
-}
-
-pub struct AudioStreamProcessor<'a> {
-    music: &'a Music<'a>,
-    callback_index: usize, // always 0 at the moment
-}
-
-impl<'a> Drop for AudioStreamProcessor<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            if self.callback_index != 0 {
-                panic!("unexpected");
-            }
-            crate::ffi::DetachAudioStreamProcessor(self.music.stream, Some(callback));
-            clear_closure(self.callback_index);
+impl<'a, F> AudioStreamProcessorCallback<'a, F>
+where
+    F: FnMut(&[f32], u32) -> (),
+{
+    pub fn new(closure: &'a mut F, nb_channels_from_music: u32) -> Self {
+        Self {
+            c_callback: Self::c_callback,
+            rust_callback: closure,
+            nb_channels_from_music,
         }
     }
-}
 
-pub fn attach_audio_stream_processor_to_music<'a>(
-    music: &'a Music<'a>,
-    processor: Box<dyn Fn(usize, &[f32]) -> () + Send + Sync>,
-) -> AudioStreamProcessor<'a> {
-    let nb_channels_from_music = music.stream.channels as usize;
-    let my_closure = Box::new(move |data_ptr: *mut c_void, frames: u32| -> () {
+    pub fn get_as_user_data(&mut self) -> *mut ::std::os::raw::c_void {
+        return self as *mut Self as *mut ::std::os::raw::c_void;
+    }
+
+    unsafe extern "C" fn c_callback(
+        user_data: *mut ::std::os::raw::c_void,
+        data_ptr: *mut ::std::os::raw::c_void,
+        frame_count: ::std::os::raw::c_uint,
+    ) -> () {
+        let stream_processor_callback: &mut Self = user_data.cast::<Self>().as_mut().unwrap();
         let f32_ptr = data_ptr as *mut f32;
         let data = unsafe {
-            std::slice::from_raw_parts(f32_ptr, frames as usize * nb_channels_from_music)
+            std::slice::from_raw_parts(
+                f32_ptr,
+                frame_count as usize * stream_processor_callback.nb_channels_from_music as usize,
+            )
         };
-        processor(nb_channels_from_music, data);
-    });
-    let idx = set_closure(my_closure);
+        (stream_processor_callback.rust_callback)(
+            data,
+            stream_processor_callback.nb_channels_from_music,
+        );
+    }
+}
+
+pub fn attach_audio_stream_processor_to_music<'a, F>(
+    music: &'a Music<'a>,
+    processor: &'a mut F,
+) -> AudioStreamProcessorCallback<'a, F>
+where
+    F: FnMut(&[f32], u32) -> (),
+{
+    let mut stream_processor_callback =
+        AudioStreamProcessorCallback::<'a, F>::new(processor, music.stream.channels);
     unsafe {
-        crate::ffi::AttachAudioStreamProcessor(music.stream, Some(callback));
+        crate::ffi::AttachAudioStreamProcessorWithUserData(
+            stream_processor_callback.get_as_user_data(),
+            music.stream,
+            Some(stream_processor_callback.c_callback),
+        );
     }
-    AudioStreamProcessor::<'a> {
-        music: music,
-        callback_index: idx,
-    }
+    stream_processor_callback
 }
 
 /// Audio thread callback to request new data
