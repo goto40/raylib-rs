@@ -1,10 +1,12 @@
 #![allow(non_camel_case_types)]
 
+mod audio_callbacks;
+pub use audio_callbacks::*;
+
 use crate::{audio::AudioStream, ffi, RaylibHandle};
 pub use raylib_sys::TraceLogLevel;
 use std::ffi::c_void;
 use std::os::raw::c_int;
-use std::sync::Mutex;
 use std::{
     borrow::Cow,
     convert::TryInto,
@@ -14,8 +16,6 @@ use std::{
     slice::from_raw_parts_mut,
     sync::atomic::{AtomicUsize, Ordering},
 };
-
-use super::audio::Music;
 
 type TraceLogCallback = unsafe extern "C" fn(*mut i8, *const i8, ...);
 extern "C" {
@@ -204,85 +204,6 @@ pub fn set_load_file_text_callback<'a>(cb: fn(&str) -> String) -> Result<(), Set
         custom_load_file_text_callback,
         "load file text"
     )
-}
-
-// Define the type of the closure
-type MyClosure = Box<dyn Fn(*mut c_void, u32) -> () + Send + Sync + 'static>;
-
-// Create a global mutex to store the closure
-lazy_static::lazy_static! {
-    static ref CLOSURE: Mutex<Option<MyClosure>> = Mutex::new(None);
-}
-
-// Function to set the closure
-fn set_closure(closure: MyClosure) -> usize {
-    let mut guard = CLOSURE.lock().unwrap();
-    if (*guard).is_some() {
-        panic!("You cannot add more callbacks for the moment.");
-    }
-    *guard = Some(closure);
-    0
-}
-
-// Function to set the closure
-fn clear_closure(callback_index: usize) {
-    let mut guard = CLOSURE.lock().unwrap();
-    if (*guard).is_none() {
-        panic!(
-            "No callbacks registered under this number ({}).",
-            callback_index
-        );
-    }
-    *guard = None;
-}
-
-#[no_mangle]
-pub extern "C" fn callback(data_ptr: *mut c_void, frames: u32) -> () {
-    let guard = CLOSURE.lock().unwrap();
-    if let Some(ref closure) = *guard {
-        closure(data_ptr, frames)
-    } else {
-        panic!("unexpected: no callback set")
-    }
-}
-
-pub struct AudioStreamProcessor<'a> {
-    music: &'a Music<'a>,
-    callback_index: usize, // always 0 at the moment
-}
-
-impl<'a> Drop for AudioStreamProcessor<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            if self.callback_index != 0 {
-                panic!("unexpected");
-            }
-            crate::ffi::DetachAudioStreamProcessor(self.music.stream, Some(callback));
-            clear_closure(self.callback_index);
-        }
-    }
-}
-
-pub fn attach_audio_stream_processor_to_music<'a>(
-    music: &'a Music<'a>,
-    processor: Box<dyn Fn(usize, &[f32]) -> () + Send + Sync>,
-) -> AudioStreamProcessor<'a> {
-    let nb_channels_from_music = music.stream.channels as usize;
-    let my_closure = Box::new(move |data_ptr: *mut c_void, frames: u32| -> () {
-        let f32_ptr = data_ptr as *mut f32;
-        let data = unsafe {
-            std::slice::from_raw_parts(f32_ptr, frames as usize * nb_channels_from_music)
-        };
-        processor(nb_channels_from_music, data);
-    });
-    let idx = set_closure(my_closure);
-    unsafe {
-        crate::ffi::AttachAudioStreamProcessor(music.stream, Some(callback));
-    }
-    AudioStreamProcessor::<'a> {
-        music: music,
-        callback_index: idx,
-    }
 }
 
 /// Audio thread callback to request new data
